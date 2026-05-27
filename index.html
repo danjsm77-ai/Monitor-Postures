@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Posture Monitor - Cámara Ajustada</title>
+    <title>AI Posture Monitor Pro - Edición Universal</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -31,6 +31,28 @@
         .status-bad { border-color: #f75151; animation: blink 1s infinite; }
         
         h1 { margin-top: 0; color: #ffffff; }
+        
+        .control-group {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+
+        select {
+            background-color: #121214;
+            color: #e1e1e6;
+            border: 2px solid #323238;
+            padding: 10px;
+            border-radius: 6px;
+            width: 80%;
+            font-size: 14px;
+            cursor: pointer;
+            outline: none;
+        }
+        select:focus { border-color: #4e44e7; }
+
         button {
             background-color: #4e44e7;
             color: white;
@@ -41,7 +63,7 @@
             border-radius: 6px;
             cursor: pointer;
             transition: background 0.2s;
-            margin-bottom: 20px;
+            width: 80%;
         }
         button:hover { background-color: #3b33b3; }
         button:disabled {
@@ -49,8 +71,8 @@
             color: #7c7c8a;
             cursor: not-allowed;
         }
-        /* Ajuste de contenedor a formato cuadrado idéntico a Teachable Machine */
-        #webcam-container {
+        
+        #canvas-container {
             margin: 15px auto;
             border-radius: 8px;
             overflow: hidden;
@@ -60,11 +82,11 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            border: 2px dashed #323238;
         }
-        /* Fuerza al lienzo de la cámara a mantener proporciones sin hacer zoom destructivo */
-        #webcam-container canvas {
-            width: 100% !important;
-            height: 100% !important;
+        canvas {
+            width: 100%;
+            height: 100%;
             object-fit: cover;
         }
         #status-message {
@@ -83,61 +105,109 @@
 <body>
 
 <div class="container" id="main-card">
-    <h1>Monitor de Postura IA</h1>
-    <p>El sistema analizará tu posición en tiempo real para proteger tu espalda.</p>
-    <button type="button" id="start-btn" onclick="init()">Iniciar Monitor</button>
-    <div id="webcam-container"></div>
+    <h1>Monitor de Postura IA Pro</h1>
+    <p>Análisis de geometría corporal adaptable a cualquier entorno laboral.</p>
+    
+    <div class="control-group">
+        <label for="camera-select">Seleccionar Dispositivo de Video:</label>
+        <select id="camera-select"><option>Detectando cámaras...</option></select>
+        <button type="button" id="start-btn" onclick="init()">Iniciar Monitor</button>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
     <div id="status-message">Esperando inicio...</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@latest/dist/teachablemachine-pose.min.js"></script>
 <script type="text/javascript">
     
+    // REEMPLAZA ESTA URL CON TU NUEVO ENLACE DE MODELO DE POSE
     const URL = "https://teachablemachine.withgoogle.com/models/Jf6ObgbGyN/";
 
-    let model, webcam, maxPredictions;
-    let isRunning = false; 
+    let model, webcam, ctx, maxPredictions;
+    let isRunning = false;
+
+    // Ejecución automática al cargar la página: Detecta y enumera hardware de video de forma nativa
+    window.onload = async () => {
+        try {
+            // Solicita una ráfaga rápida de acceso para forzar al S.O. a revelar los nombres de las cámaras
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            stream.getTracks().forEach(track => track.stop()); // Apaga de inmediato para liberar hardware
+            
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(d => d.kind === 'videoinput');
+            const select = document.getElementById("camera-select");
+            select.innerHTML = "";
+            
+            if(videoDevices.length === 0) {
+                select.innerHTML = "<option>No se encontraron cámaras físicas</option>";
+                return;
+            }
+
+            videoDevices.forEach((device, index) => {
+                const option = document.createElement("option");
+                option.value = device.deviceId;
+                option.text = device.label || `Cámara Integrada ${index + 1}`;
+                select.appendChild(option);
+            });
+        } catch (err) {
+            console.error("Error enumerando periféricos:", err);
+            document.getElementById("camera-select").innerHTML = "<option>Permiso de cámara denegado o bloqueado</option>";
+        }
+    };
 
     async function init() {
         if (isRunning) return;
         
-        const startBtn = document.getElementById("start-btn");
         const statusMsg = document.getElementById("status-message");
+        const startBtn = document.getElementById("start-btn");
+        const cameraSelect = document.getElementById("camera-select");
         
         startBtn.disabled = true;
-        statusMsg.innerText = "Cargando modelo...";
+        cameraSelect.disabled = true;
+        statusMsg.innerText = "Cargando Red Neuronal...";
 
         try {
             const modelURL = URL + "model.json";
             const metadataURL = URL + "metadata.json";
 
-            model = await tmImage.load(modelURL, metadataURL);
+            model = await tmPose.load(modelURL, metadataURL);
             maxPredictions = model.getTotalClasses();
 
-            const flip = true; 
-            // Cambiado a 300x300 para que coincida exactamente con la relación de aspecto del entrenamiento
-            webcam = new tmImage.Webcam(300, 300, flip); 
+            const size = 300;
+            const flip = true;
+            webcam = new tmPose.Webcam(size, size, flip);
             
-            statusMsg.innerText = "Configurando cámara...";
-            await webcam.setup(); 
+            // Restricción por software: Forzar el ID de la cámara seleccionada en el dropdown
+            const selectedDeviceId = cameraSelect.value;
+            const constraints = selectedDeviceId ? { video: { deviceId: { exact: selectedDeviceId } } } : { video: true };
+            
+            statusMsg.innerText = "Sincronizando flujo de video...";
+            await webcam.setup(constraints); 
             await webcam.play();
             
+            const canvas = document.getElementById("canvas");
+            canvas.width = size; 
+            canvas.height = size;
+            ctx = canvas.getContext("2d");
+
             isRunning = true;
             window.requestAnimationFrame(loop);
-
-            document.getElementById("webcam-container").appendChild(webcam.canvas);
             statusMsg.innerText = "Analizando postura...";
         } catch (error) {
             console.error(error);
-            statusMsg.innerText = "Error: Cámara ocupada o permiso denegado.";
+            statusMsg.innerText = "Error de Hardware: Dispositivo ocupado o no disponible.";
             statusMsg.style.color = "#f75151";
             startBtn.disabled = false;
+            cameraSelect.disabled = false;
             isRunning = false;
         }
     }
 
-    async function loop() {
+    async function loop(timestamp) {
         if (!isRunning) return;
         webcam.update(); 
         await predict();
@@ -145,7 +215,21 @@
     }
 
     async function predict() {
-        const prediction = await model.predict(webcam.canvas);
+        // Validación de Seguridad: Si la cámara no envía frames válidos, frena la ejecución
+        if (!webcam.canvas || webcam.canvas.width === 0) return;
+
+        const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+        
+        // Si el algoritmo de PoseNet no detecta un cuerpo humano en la toma, limpia pantalla y espera
+        if (!pose) {
+            drawPose(null);
+            document.getElementById("main-card").className = "container";
+            document.getElementById("status-message").innerText = "Buscando silueta...";
+            document.getElementById("status-message").style.color = "#7c7c8a";
+            return;
+        }
+
+        const prediction = await model.predict(posenetOutput);
         let highestClass = "";
         let highestProbability = 0;
 
@@ -159,26 +243,30 @@
         const card = document.getElementById("main-card");
         const message = document.getElementById("status-message");
 
-        // Calibración automática si la certeza es baja
-        if (highestProbability < 0.70) {
-            card.className = "container";
-            message.innerText = "Calibrando...";
-            message.style.color = "#7c7c8a";
-            return;
-        }
+        drawPose(pose);
 
-        if (highestClass === "Good Posture") {
+        // Filtro matemático de estabilidad (Evita falsos cambios bruscos de estado)
+        if (highestProbability < 0.78) return; 
+
+        if (highestClass === "Good Posture" || highestClass === "Buena Postura") {
             card.className = "container status-good";
             message.innerText = "Excelente postura";
             message.style.color = "#04d361";
-        } else if (highestClass === "Slouching Posture") {
+        } else {
             card.className = "container status-bad";
             message.innerText = "¡Endorézate! Estás encorvado";
             message.style.color = "#f75151";
-        } else {
-            card.className = "container";
-            message.innerText = "Detectando...";
-            message.style.color = "#e1e1e6";
+        }
+    }
+
+    function drawPose(pose) {
+        if (webcam.canvas) {
+            ctx.drawImage(webcam.canvas, 0, 0);
+            if (pose) {
+                const minPartConfidence = 0.5;
+                tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+                tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+            }
         }
     }
 </script>
