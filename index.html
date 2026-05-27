@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Posture Monitor - Debug Mode</title>
+    <title>AI Posture Monitor Pro - Edición Universal</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -24,46 +24,65 @@
             text-align: center;
             max-width: 500px;
             width: 100%;
+            transition: border 0.3s ease;
             border: 4px solid #323238;
         }
-        .status-good { border-color: #04d361; }
-        .status-bad { border-color: #f75151; }
+        /* Estados de borde para retroalimentación visual rápida */
+        .status-good { border-color: #04d361; box-shadow: 0 0 15px rgba(4, 211, 97, 0.4); }
+        .status-bad { border-color: #f75151; animation: blink 1s infinite; }
         
-        h1 { margin-top: 0; color: #ffffff; }
+        h1 { margin-top: 0; color: #ffffff; font-size: 28px; }
+        p { color: #7c7c8a; margin-bottom: 25px; }
         
         .control-group {
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 12px;
             align-items: center;
         }
+
+        label { font-weight: bold; color: #e1e1e6; }
 
         select {
             background-color: #121214;
             color: #e1e1e6;
             border: 2px solid #323238;
-            padding: 10px;
-            border-radius: 6px;
-            width: 80%;
-            font-size: 14px;
+            padding: 12px;
+            border-radius: 8px;
+            width: 90%;
+            font-size: 15px;
+            cursor: pointer;
+            outline: none;
+            transition: border-color 0.2s;
         }
+        select:focus { border-color: #4e44e7; }
 
         button {
             background-color: #4e44e7;
             color: white;
             border: none;
-            padding: 12px 24px;
-            font-size: 16px;
+            padding: 14px 28px;
+            font-size: 17px;
             font-weight: bold;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
-            width: 80%;
+            transition: background 0.2s, transform 0.1s;
+            width: 90%;
+            box-shadow: 0 4px 12px rgba(78, 68, 231, 0.3);
+        }
+        button:hover { background-color: #3b33b3; }
+        button:active { transform: translateY(1px); }
+        button:disabled {
+            background-color: #323238;
+            color: #7c7c8a;
+            cursor: not-allowed;
+            box-shadow: none;
         }
         
         #canvas-container {
-            margin: 15px auto;
-            border-radius: 8px;
+            margin: 20px auto;
+            border-radius: 12px;
             overflow: hidden;
             width: 300px;
             height: 300px;
@@ -71,35 +90,48 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            border: 2px dashed #323238;
+            border: 2px solid #323238;
+            position: relative;
         }
         canvas {
             width: 100%;
             height: 100%;
+            object-fit: cover;
+            /* Eliminamos cualquier filtro de espejo aquí, lo manejaremos en JS si es necesario */
         }
+        
         #status-message {
-            font-size: 16px;
+            font-size: 22px;
             font-weight: bold;
-            margin-top: 15px;
-            word-break: break-word;
+            margin-top: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* Animación sutil de parpadeo para alerta de mala postura */
+        @keyframes blink {
+            0% { box-shadow: 0 0 10px rgba(247, 81, 81, 0.5); border-color: #f75151; }
+            50% { box-shadow: 0 0 25px rgba(247, 81, 81, 0.9); border-color: #ff8787; }
+            100% { box-shadow: 0 0 10px rgba(247, 81, 81, 0.5); border-color: #f75151; }
         }
     </style>
 </head>
 <body>
 
 <div class="container" id="main-card">
-    <h1>Monitor de Postura - Diagnóstico</h1>
+    <h1>Monitor de Postura Inteligente</h1>
+    <p>Análisis de geometría corporal adaptable a cualquier entorno laboral.</p>
     
     <div class="control-group">
-        <label for="camera-select">Dispositivo de Video:</label>
-        <select id="camera-select"><option>Cargando origen...</option></select>
-        <button type="button" id="start-btn" onclick="init()">Iniciar Monitor</button>
+        <label for="camera-select">Seleccionar Dispositivo de Video:</label>
+        <select id="camera-select"><option>Cargando hardware...</option></select>
+        <button type="button" id="start-btn" onclick="init()">Iniciar Monitor Pro</button>
     </div>
 
     <div id="canvas-container">
         <canvas id="canvas"></canvas>
     </div>
-    <div id="status-message">Esperando interacción...</div>
+    <div id="status-message">Esperando inicio...</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
@@ -111,40 +143,32 @@
     let model, webcam, ctx, maxPredictions;
     let isRunning = false;
 
-    // Captura global de errores críticos de carga de librerías o scripts
-    window.onerror = function(message, source, lineno, colno, error) {
-        const msgBox = document.getElementById("status-message");
-        msgBox.innerText = "CRITICAL ERR: " + message + " (Línea " + lineno + ")";
-        msgBox.style.color = "#f75151";
-        return false;
-    };
-
-    window.addEventListener('unhandledrejection', function (event) {
-        const msgBox = document.getElementById("status-message");
-        msgBox.innerText = "PROMISE REJECTION: " + (event.reason?.message || event.reason);
-        msgBox.style.color = "#f75151";
-    });
-
+    // Ejecución automática al cargar la página: Detecta hardware de video de forma nativa
     window.onload = async () => {
         try {
+            // Solicita una ráfaga rápida de acceso para forzar al S.O. a revelar los nombres de las cámaras
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            stream.getTracks().forEach(track => track.stop()); // Apaga de inmediato para liberar hardware
+            
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
             const select = document.getElementById("camera-select");
             select.innerHTML = "";
             
             if(videoDevices.length === 0) {
-                select.innerHTML = "<option>No se detectan cámaras</option>";
+                select.innerHTML = "<option>No se encontraron cámaras físicas</option>";
                 return;
             }
 
             videoDevices.forEach((device, index) => {
                 const option = document.createElement("option");
                 option.value = device.deviceId;
-                option.text = device.label || `Cámara ${index + 1}`;
+                option.text = device.label || `Cámara Integrada ${index + 1}`;
                 select.appendChild(option);
             });
         } catch (err) {
-            document.getElementById("status-message").innerText = "Error enumerando hardware: " + err.message;
+            console.error("Error enumerando periféricos:", err);
+            document.getElementById("camera-select").innerHTML = "<option>Permiso de cámara denegado</option>";
         }
     };
 
@@ -152,35 +176,48 @@
         if (isRunning) return;
         
         const statusMsg = document.getElementById("status-message");
-        statusMsg.innerText = "Cargando modelo de Google...";
+        const startBtn = document.getElementById("start-btn");
+        const cameraSelect = document.getElementById("camera-select");
+        
+        startBtn.disabled = true;
+        cameraSelect.disabled = true;
+        statusMsg.innerText = "Cargando IA...";
         statusMsg.style.color = "#e1e1e6";
 
         try {
-            model = await tmPose.load(URL + "model.json", URL + "metadata.json");
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            model = await tmPose.load(modelURL, metadataURL);
             maxPredictions = model.getTotalClasses();
 
-            statusMsg.innerText = "Iniciando componente Webcam...";
+            const size = 300;
+            const flip = true; // Mantener efecto espejo para UX natural
+            webcam = new tmPose.Webcam(size, size, flip);
             
-            webcam = new tmPose.Webcam(300, 300, true);
+            // Restricción por software: Forzar el ID de la cámara seleccionada en el dropdown
+            const selectedDeviceId = cameraSelect.value;
+            const constraints = selectedDeviceId ? { video: { deviceId: { exact: selectedDeviceId } } } : { video: true };
             
-            // Forzar configuración con ID seleccionado
-            const selectedId = document.getElementById("camera-select").value;
-            const constraints = selectedId ? { deviceId: { exact: selectedId } } : {};
-            
-            await webcam.setup({ video: constraints });
+            statusMsg.innerText = "Sincronizando cámara...";
+            await webcam.setup({ video: constraints }); 
             await webcam.play();
             
             const canvas = document.getElementById("canvas");
-            canvas.width = 300; 
-            canvas.height = 300;
+            canvas.width = size; 
+            canvas.height = size;
             ctx = canvas.getContext("2d");
 
             isRunning = true;
-            statusMsg.innerText = "Modelo activo. Ejecutando iteración...";
             window.requestAnimationFrame(loop);
+            statusMsg.innerText = "Analizando postura...";
         } catch (error) {
-            statusMsg.innerText = "FALLO EN INIT: " + error.message;
+            console.error(error);
+            statusMsg.innerText = "Error: Cámara ocupada o permiso denegado.";
             statusMsg.style.color = "#f75151";
+            startBtn.disabled = false;
+            cameraSelect.disabled = false;
+            isRunning = false;
         }
     }
 
@@ -188,25 +225,35 @@
         if (!isRunning) return;
         webcam.update(); 
         await predict();
-        if (isRunning) window.requestAnimationFrame(loop);
+        window.requestAnimationFrame(loop);
     }
 
     async function predict() {
+        // Validación de Seguridad: Si la cámara no envía frames válidos, frena la ejecución
+        if (!webcam.canvas || webcam.canvas.width === 0) return;
+
         try {
             const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
             
             const card = document.getElementById("main-card");
             const message = document.getElementById("status-message");
 
+            // --- SOLUCIÓN AL PROBLEMA 1 ---
+            // 1. PRIMERO: Dibujamos el video de la cámara SIEMPRE
+            ctx.drawImage(webcam.canvas, 0, 0);
+
+            // 2. SEGUNDO: Comentamos/Eliminamos las líneas de dibujo del esqueleto (puntos y líneas cian)
+            // Estas líneas son las que causaban la visualización de los puntos de medición.
+            // tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+            // tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+            // ---------------------------------
+
             if (!pose) {
-                ctx.drawImage(webcam.canvas, 0, 0);
-                message.innerText = "Buscando silueta corporal...";
+                card.className = "container";
+                message.innerText = "Buscando silueta...";
+                message.style.color = "#7c7c8a";
                 return;
             }
-
-            ctx.drawImage(webcam.canvas, 0, 0);
-            tmPose.drawKeypoints(pose.keypoints, 0.5, ctx);
-            tmPose.drawSkeleton(pose.keypoints, 0.5, ctx);
 
             const prediction = await model.predict(posenetOutput);
             let highestClass = "";
@@ -219,20 +266,21 @@
                 }
             }
 
+            // Filtro matemático de estabilidad (Evita falsos cambios bruscos de estado)
+            if (highestProbability < 0.75) return; 
+
+            // Manejo adaptativo basado en el nombre exacto de tus clases asignadas en TM
             if (highestClass === "Good Posture" || highestClass === "Buena Postura") {
                 card.className = "container status-good";
-                message.innerText = "Postura Correcta (" + Math.round(highestProbability * 100) + "%)";
+                message.innerText = "Excelente postura";
                 message.style.color = "#04d361";
             } else {
                 card.className = "container status-bad";
-                message.innerText = "Postura Incorrecta (" + Math.round(highestProbability * 100) + "%)";
+                message.innerText = "¡Endorézate! Estás encorvado";
                 message.style.color = "#f75151";
             }
         } catch (err) {
-            isRunning = false; // Detener bucle ante fallo
-            const message = document.getElementById("status-message");
-            message.innerText = "FALLO EN INFERENCIA (PREDICT): " + err.message;
-            message.style.color = "#f75151";
+            console.error("Error en ejecución de inferencia:", err);
         }
     }
 </script>
