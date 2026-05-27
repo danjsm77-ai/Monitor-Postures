@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Posture Monitor Pro - Edición Universal</title>
+    <title>AI Posture Monitor - Debug Mode</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -24,11 +24,10 @@
             text-align: center;
             max-width: 500px;
             width: 100%;
-            transition: border 0.3s ease;
             border: 4px solid #323238;
         }
         .status-good { border-color: #04d361; }
-        .status-bad { border-color: #f75151; animation: blink 1s infinite; }
+        .status-bad { border-color: #f75151; }
         
         h1 { margin-top: 0; color: #ffffff; }
         
@@ -48,10 +47,7 @@
             border-radius: 6px;
             width: 80%;
             font-size: 14px;
-            cursor: pointer;
-            outline: none;
         }
-        select:focus { border-color: #4e44e7; }
 
         button {
             background-color: #4e44e7;
@@ -62,14 +58,7 @@
             font-weight: bold;
             border-radius: 6px;
             cursor: pointer;
-            transition: background 0.2s;
             width: 80%;
-        }
-        button:hover { background-color: #3b33b3; }
-        button:disabled {
-            background-color: #323238;
-            color: #7c7c8a;
-            cursor: not-allowed;
         }
         
         #canvas-container {
@@ -87,40 +76,31 @@
         canvas {
             width: 100%;
             height: 100%;
-            object-fit: cover;
         }
         #status-message {
-            font-size: 20px;
+            font-size: 16px;
             font-weight: bold;
             margin-top: 15px;
-            text-transform: uppercase;
-        }
-        @keyframes blink {
-            0% { box-shadow: 0 0 10px rgba(247, 81, 81, 0.5); }
-            50% { box-shadow: 0 0 25px rgba(247, 81, 81, 0.9); }
-            100% { box-shadow: 0 0 10px rgba(247, 81, 81, 0.5); }
+            word-break: break-word;
         }
     </style>
 </head>
 <body>
 
 <div class="container" id="main-card">
-    <h1>Monitor de Postura IA Pro</h1>
-    <p>Análisis de geometría corporal adaptable a cualquier entorno laboral.</p>
+    <h1>Monitor de Postura - Diagnóstico</h1>
     
     <div class="control-group">
-        <label for="camera-select">Seleccionar Dispositivo de Video:</label>
-        <select id="camera-select"><option>Detectando cámaras...</option></select>
+        <label for="camera-select">Dispositivo de Video:</label>
+        <select id="camera-select"><option>Cargando origen...</option></select>
         <button type="button" id="start-btn" onclick="init()">Iniciar Monitor</button>
     </div>
 
     <div id="canvas-container">
         <canvas id="canvas"></canvas>
     </div>
-    <div id="status-message">Esperando inicio...</div>
+    <div id="status-message">Esperando interacción...</div>
 </div>
-
-<video id="video" autoplay playsinline style="display:none;"></video>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
@@ -128,34 +108,43 @@
 <script type="text/javascript">
     const URL = "https://teachablemachine.withgoogle.com/models/CF29Dd5wY/";
 
-    let model, video, canvas, ctx, maxPredictions;
+    let model, webcam, ctx, maxPredictions;
     let isRunning = false;
-    let localStream = null;
+
+    // Captura global de errores críticos de carga de librerías o scripts
+    window.onerror = function(message, source, lineno, colno, error) {
+        const msgBox = document.getElementById("status-message");
+        msgBox.innerText = "CRITICAL ERR: " + message + " (Línea " + lineno + ")";
+        msgBox.style.color = "#f75151";
+        return false;
+    };
+
+    window.addEventListener('unhandledrejection', function (event) {
+        const msgBox = document.getElementById("status-message");
+        msgBox.innerText = "PROMISE REJECTION: " + (event.reason?.message || event.reason);
+        msgBox.style.color = "#f75151";
+    });
 
     window.onload = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            stream.getTracks().forEach(track => track.stop()); 
-            
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
             const select = document.getElementById("camera-select");
             select.innerHTML = "";
             
             if(videoDevices.length === 0) {
-                select.innerHTML = "<option>No se encontraron cámaras físicas</option>";
+                select.innerHTML = "<option>No se detectan cámaras</option>";
                 return;
             }
 
             videoDevices.forEach((device, index) => {
                 const option = document.createElement("option");
                 option.value = device.deviceId;
-                option.text = device.label || `Cámara Integrada ${index + 1}`;
+                option.text = device.label || `Cámara ${index + 1}`;
                 select.appendChild(option);
             });
         } catch (err) {
-            console.error(err);
-            document.getElementById("camera-select").innerHTML = "<option>Permiso de cámara denegado</option>";
+            document.getElementById("status-message").innerText = "Error enumerando hardware: " + err.message;
         }
     };
 
@@ -163,92 +152,61 @@
         if (isRunning) return;
         
         const statusMsg = document.getElementById("status-message");
-        const startBtn = document.getElementById("start-btn");
-        const cameraSelect = document.getElementById("camera-select");
-        
-        startBtn.disabled = true;
-        cameraSelect.disabled = true;
-        statusMsg.innerText = "Cargando Red Neuronal...";
+        statusMsg.innerText = "Cargando modelo de Google...";
         statusMsg.style.color = "#e1e1e6";
 
         try {
-            const modelURL = URL + "model.json";
-            const metadataURL = URL + "metadata.json";
-
-            model = await tmPose.load(modelURL, metadataURL);
+            model = await tmPose.load(URL + "model.json", URL + "metadata.json");
             maxPredictions = model.getTotalClasses();
 
-            statusMsg.innerText = "Sincronizando flujo de video...";
+            statusMsg.innerText = "Iniciando componente Webcam...";
             
-            video = document.getElementById("video");
-            const selectedDeviceId = cameraSelect.value;
+            webcam = new tmPose.Webcam(300, 300, true);
             
-            const constraints = {
-                video: selectedDeviceId ? { deviceId: { exact: selectedDeviceId }, width: 300, height: 300 } : { width: 300, height: 300 }
-            };
+            // Forzar configuración con ID seleccionado
+            const selectedId = document.getElementById("camera-select").value;
+            const constraints = selectedId ? { deviceId: { exact: selectedId } } : {};
             
-            localStream = await navigator.mediaDevices.getUserMedia(constraints);
-            video.srcObject = localStream;
+            await webcam.setup({ video: constraints });
+            await webcam.play();
             
-            await new Promise((resolve) => {
-                video.onloadedmetadata = () => {
-                    video.play();
-                    resolve();
-                };
-            });
-
-            canvas = document.getElementById("canvas");
+            const canvas = document.getElementById("canvas");
             canvas.width = 300; 
             canvas.height = 300;
             ctx = canvas.getContext("2d");
 
             isRunning = true;
-            statusMsg.innerText = "Analizando postura...";
+            statusMsg.innerText = "Modelo activo. Ejecutando iteración...";
             window.requestAnimationFrame(loop);
         } catch (error) {
-            console.error(error);
-            statusMsg.innerText = "Error: Acceso a cámara denegado o fallo de red.";
+            statusMsg.innerText = "FALLO EN INIT: " + error.message;
             statusMsg.style.color = "#f75151";
-            startBtn.disabled = false;
-            cameraSelect.disabled = false;
-            isRunning = false;
         }
     }
 
     async function loop(timestamp) {
         if (!isRunning) return;
+        webcam.update(); 
         await predict();
-        window.requestAnimationFrame(loop);
+        if (isRunning) window.requestAnimationFrame(loop);
     }
 
     async function predict() {
-        if (video.readyState < video.HAVE_CURRENT_DATA) return;
-
         try {
-            // Renderizado espejo nativo del cuadro de video sobre el lienzo
-            ctx.save();
-            ctx.translate(canvas.width, 0);
-            ctx.scale(-1, 1);
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            ctx.restore();
-
-            // Análisis geométrico basado en los pixeles del lienzo sincronizado
-            const { pose, posenetOutput } = await model.estimatePose(canvas);
+            const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
             
             const card = document.getElementById("main-card");
             const message = document.getElementById("status-message");
 
             if (!pose) {
-                card.className = "container";
-                message.innerText = "Buscando silueta...";
-                message.style.color = "#7c7c8a";
+                ctx.drawImage(webcam.canvas, 0, 0);
+                message.innerText = "Buscando silueta corporal...";
                 return;
             }
 
-            // Pintado del esqueleto matemático
-            const minPartConfidence = 0.5;
-            tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
-            tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+            ctx.drawImage(webcam.canvas, 0, 0);
+            tmPose.drawKeypoints(pose.keypoints, 0.5, ctx);
+            tmPose.drawSkeleton(pose.keypoints, 0.5, ctx);
 
             const prediction = await model.predict(posenetOutput);
             let highestClass = "";
@@ -261,19 +219,20 @@
                 }
             }
 
-            if (highestProbability < 0.75) return; 
-
             if (highestClass === "Good Posture" || highestClass === "Buena Postura") {
                 card.className = "container status-good";
-                message.innerText = "Excelente postura";
+                message.innerText = "Postura Correcta (" + Math.round(highestProbability * 100) + "%)";
                 message.style.color = "#04d361";
             } else {
                 card.className = "container status-bad";
-                message.innerText = "¡Endorézate! Estás encorvado";
+                message.innerText = "Postura Incorrecta (" + Math.round(highestProbability * 100) + "%)";
                 message.style.color = "#f75151";
             }
         } catch (err) {
-            console.error("Error en ejecución de inferencia:", err);
+            isRunning = false; // Detener bucle ante fallo
+            const message = document.getElementById("status-message");
+            message.innerText = "FALLO EN INFERENCIA (PREDICT): " + err.message;
+            message.style.color = "#f75151";
         }
     }
 </script>
