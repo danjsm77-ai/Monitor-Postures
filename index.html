@@ -90,7 +90,7 @@
             object-fit: cover;
         }
         #status-message {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: bold;
             margin-top: 15px;
             text-transform: uppercase;
@@ -124,18 +124,15 @@
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@latest/dist/teachablemachine-pose.min.js"></script>
 <script type="text/javascript">
     
-    // REEMPLAZA ESTA URL CON TU NUEVO ENLACE DE MODELO DE POSE
-    const URL = "https://teachablemachine.withgoogle.com/models/Jf6ObgbGyN/";
+    const URL = "https://teachablemachine.withgoogle.com/models/CF29Dd5wY/";
 
     let model, webcam, ctx, maxPredictions;
     let isRunning = false;
 
-    // Ejecución automática al cargar la página: Detecta y enumera hardware de video de forma nativa
     window.onload = async () => {
         try {
-            // Solicita una ráfaga rápida de acceso para forzar al S.O. a revelar los nombres de las cámaras
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            stream.getTracks().forEach(track => track.stop()); // Apaga de inmediato para liberar hardware
+            stream.getTracks().forEach(track => track.stop()); 
             
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
@@ -154,8 +151,8 @@
                 select.appendChild(option);
             });
         } catch (err) {
-            console.error("Error enumerando periféricos:", err);
-            document.getElementById("camera-select").innerHTML = "<option>Permiso de cámara denegado o bloqueado</option>";
+            console.error(err);
+            document.getElementById("camera-select").innerHTML = "<option>Permiso de cámara denegado</option>";
         }
     };
 
@@ -169,6 +166,7 @@
         startBtn.disabled = true;
         cameraSelect.disabled = true;
         statusMsg.innerText = "Cargando Red Neuronal...";
+        statusMsg.style.color = "#e1e1e6";
 
         try {
             const modelURL = URL + "model.json";
@@ -181,7 +179,6 @@
             const flip = true;
             webcam = new tmPose.Webcam(size, size, flip);
             
-            // Restricción por software: Forzar el ID de la cámara seleccionada en el dropdown
             const selectedDeviceId = cameraSelect.value;
             const constraints = selectedDeviceId ? { video: { deviceId: { exact: selectedDeviceId } } } : { video: true };
             
@@ -199,7 +196,7 @@
             statusMsg.innerText = "Analizando postura...";
         } catch (error) {
             console.error(error);
-            statusMsg.innerText = "Error de Hardware: Dispositivo ocupado o no disponible.";
+            statusMsg.innerText = "Error: Enlace de modelo inválido o cámara ocupada.";
             statusMsg.style.color = "#f75151";
             startBtn.disabled = false;
             cameraSelect.disabled = false;
@@ -211,50 +208,55 @@
         if (!isRunning) return;
         webcam.update(); 
         await predict();
-        window.requestAnimationFrame(loop);
+        if (isRunning) window.requestAnimationFrame(loop);
     }
 
     async function predict() {
-        // Validación de Seguridad: Si la cámara no envía frames válidos, frena la ejecución
         if (!webcam.canvas || webcam.canvas.width === 0) return;
 
-        const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
-        
-        // Si el algoritmo de PoseNet no detecta un cuerpo humano en la toma, limpia pantalla y espera
-        if (!pose) {
-            drawPose(null);
-            document.getElementById("main-card").className = "container";
-            document.getElementById("status-message").innerText = "Buscando silueta...";
-            document.getElementById("status-message").style.color = "#7c7c8a";
-            return;
-        }
-
-        const prediction = await model.predict(posenetOutput);
-        let highestClass = "";
-        let highestProbability = 0;
-
-        for (let i = 0; i < maxPredictions; i++) {
-            if (prediction[i].probability > highestProbability) {
-                highestProbability = prediction[i].probability;
-                highestClass = prediction[i].className;
+        try {
+            const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+            
+            if (!pose) {
+                drawPose(null);
+                document.getElementById("main-card").className = "container";
+                document.getElementById("status-message").innerText = "Buscando silueta...";
+                document.getElementById("status-message").style.color = "#7c7c8a";
+                return;
             }
-        }
 
-        const card = document.getElementById("main-card");
-        const message = document.getElementById("status-message");
+            const prediction = await model.predict(posenetOutput);
+            let highestClass = "";
+            let highestProbability = 0;
 
-        drawPose(pose);
+            for (let i = 0; i < maxPredictions; i++) {
+                if (prediction[i].probability > highestProbability) {
+                    highestProbability = prediction[i].probability;
+                    highestClass = prediction[i].className;
+                }
+            }
 
-        // Filtro matemático de estabilidad (Evita falsos cambios bruscos de estado)
-        if (highestProbability < 0.78) return; 
+            const card = document.getElementById("main-card");
+            const message = document.getElementById("status-message");
 
-        if (highestClass === "Good Posture" || highestClass === "Buena Postura") {
-            card.className = "container status-good";
-            message.innerText = "Excelente postura";
-            message.style.color = "#04d361";
-        } else {
-            card.className = "container status-bad";
-            message.innerText = "¡Endorézate! Estás encorvado";
+            drawPose(pose);
+
+            if (highestProbability < 0.75) return; 
+
+            if (highestClass === "Good Posture" || highestClass === "Buena Postura") {
+                card.className = "container status-good";
+                message.innerText = "Excelente postura";
+                message.style.color = "#04d361";
+            } else {
+                card.className = "container status-bad";
+                message.innerText = "¡Endorézate! Estás encorvado";
+                message.style.color = "#f75151";
+            }
+        } catch (err) {
+            console.error("Error en ejecución de PoseNet:", err);
+            isRunning = false;
+            const message = document.getElementById("status-message");
+            message.innerText = "Error crítico: El modelo de la URL no es de tipo Pose.";
             message.style.color = "#f75151";
         }
     }
