@@ -27,7 +27,6 @@
             transition: border 0.3s ease;
             border: 4px solid #323238;
         }
-        /* Estados de borde para retroalimentación visual rápida */
         .status-good { border-color: #04d361; box-shadow: 0 0 15px rgba(4, 211, 97, 0.4); }
         .status-bad { border-color: #f75151; animation: blink 1s infinite; }
         
@@ -97,7 +96,6 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            /* Eliminamos cualquier filtro de espejo aquí, lo manejaremos en JS si es necesario */
         }
         
         #status-message {
@@ -108,7 +106,6 @@
             letter-spacing: 1px;
         }
         
-        /* Animación sutil de parpadeo para alerta de mala postura */
         @keyframes blink {
             0% { box-shadow: 0 0 10px rgba(247, 81, 81, 0.5); border-color: #f75151; }
             50% { box-shadow: 0 0 25px rgba(247, 81, 81, 0.9); border-color: #ff8787; }
@@ -143,12 +140,10 @@
     let model, webcam, ctx, maxPredictions;
     let isRunning = false;
 
-    // Ejecución automática al cargar la página: Detecta hardware de video de forma nativa
     window.onload = async () => {
         try {
-            // Solicita una ráfaga rápida de acceso para forzar al S.O. a revelar los nombres de las cámaras
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            stream.getTracks().forEach(track => track.stop()); // Apaga de inmediato para liberar hardware
+            stream.getTracks().forEach(track => track.stop()); 
             
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
@@ -192,10 +187,9 @@
             maxPredictions = model.getTotalClasses();
 
             const size = 300;
-            const flip = true; // Mantener efecto espejo para UX natural
+            const flip = true; 
             webcam = new tmPose.Webcam(size, size, flip);
             
-            // Restricción por software: Forzar el ID de la cámara seleccionada en el dropdown
             const selectedDeviceId = cameraSelect.value;
             const constraints = selectedDeviceId ? { video: { deviceId: { exact: selectedDeviceId } } } : { video: true };
             
@@ -229,7 +223,6 @@
     }
 
     async function predict() {
-        // Validación de Seguridad: Si la cámara no envía frames válidos, frena la ejecución
         if (!webcam.canvas || webcam.canvas.width === 0) return;
 
         try {
@@ -238,15 +231,7 @@
             const card = document.getElementById("main-card");
             const message = document.getElementById("status-message");
 
-            // --- SOLUCIÓN AL PROBLEMA 1 ---
-            // 1. PRIMERO: Dibujamos el video de la cámara SIEMPRE
             ctx.drawImage(webcam.canvas, 0, 0);
-
-            // 2. SEGUNDO: Comentamos/Eliminamos las líneas de dibujo del esqueleto (puntos y líneas cian)
-            // Estas líneas son las que causaban la visualización de los puntos de medición.
-            // tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
-            // tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
-            // ---------------------------------
 
             if (!pose) {
                 card.className = "container";
@@ -266,10 +251,8 @@
                 }
             }
 
-            // Filtro matemático de estabilidad (Evita falsos cambios bruscos de estado)
             if (highestProbability < 0.75) return; 
 
-            // Manejo adaptativo basado en el nombre exacto de tus clases asignadas en TM
             if (highestClass === "Good Posture" || highestClass === "Buena Postura") {
                 card.className = "container status-good";
                 message.innerText = "Excelente postura";
