@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Posture Monitor - Edición Definitiva</title>
+    <title>AI Posture Monitor - Cámara Ajustada</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -49,13 +49,23 @@
             color: #7c7c8a;
             cursor: not-allowed;
         }
+        /* Ajuste de contenedor a formato cuadrado idéntico a Teachable Machine */
         #webcam-container {
             margin: 15px auto;
             border-radius: 8px;
             overflow: hidden;
-            width: 320px;
-            height: 240px;
+            width: 300px;
+            height: 300px;
             background-color: #121214;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Fuerza al lienzo de la cámara a mantener proporciones sin hacer zoom destructivo */
+        #webcam-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover;
         }
         #status-message {
             font-size: 22px;
@@ -84,7 +94,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 <script type="text/javascript">
     
-    // Enlace directo de tu modelo integrado
     const URL = "https://teachablemachine.withgoogle.com/models/Jf6ObgbGyN/";
 
     let model, webcam, maxPredictions;
@@ -107,7 +116,8 @@
             maxPredictions = model.getTotalClasses();
 
             const flip = true; 
-            webcam = new tmImage.Webcam(320, 240, flip); 
+            // Cambiado a 300x300 para que coincida exactamente con la relación de aspecto del entrenamiento
+            webcam = new tmImage.Webcam(300, 300, flip); 
             
             statusMsg.innerText = "Configurando cámara...";
             await webcam.setup(); 
@@ -149,15 +159,14 @@
         const card = document.getElementById("main-card");
         const message = document.getElementById("status-message");
 
-        // Calibración automática si la certeza baja del 75%
-        if (highestProbability < 0.75) {
+        // Calibración automática si la certeza es baja
+        if (highestProbability < 0.70) {
             card.className = "container";
             message.innerText = "Calibrando...";
             message.style.color = "#7c7c8a";
             return;
         }
 
-        // Validación estricta con tus etiquetas exactas de Teachable Machine
         if (highestClass === "Good Posture") {
             card.className = "container status-good";
             message.innerText = "Excelente postura";
