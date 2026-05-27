@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Posture Monitor - Edición Definitiva</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121214;
+            color: #e1e1e6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #202024;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+            transition: border 0.3s ease;
+            border: 4px solid #323238;
+        }
+        .status-good { border-color: #04d361; }
+        .status-bad { border-color: #f75151; animation: blink 1s infinite; }
+        
+        h1 { margin-top: 0; color: #ffffff; }
+        button {
+            background-color: #4e44e7;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 20px;
+        }
+        button:hover { background-color: #3b33b3; }
+        button:disabled {
+            background-color: #323238;
+            color: #7c7c8a;
+            cursor: not-allowed;
+        }
+        #webcam-container {
+            margin: 15px auto;
+            border-radius: 8px;
+            overflow: hidden;
+            width: 320px;
+            height: 240px;
+            background-color: #121214;
+        }
+        #status-message {
+            font-size: 22px;
+            font-weight: bold;
+            margin-top: 15px;
+            text-transform: uppercase;
+        }
+        @keyframes blink {
+            0% { box-shadow: 0 0 10px rgba(247, 81, 81, 0.5); }
+            50% { box-shadow: 0 0 25px rgba(247, 81, 81, 0.9); }
+            100% { box-shadow: 0 0 10px rgba(247, 81, 81, 0.5); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="main-card">
+    <h1>Monitor de Postura IA</h1>
+    <p>El sistema analizará tu posición en tiempo real para proteger tu espalda.</p>
+    <button type="button" id="start-btn" onclick="init()">Iniciar Monitor</button>
+    <div id="webcam-container"></div>
+    <div id="status-message">Esperando inicio...</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+<script type="text/javascript">
+    
+    // Enlace directo de tu modelo integrado
+    const URL = "https://teachablemachine.withgoogle.com/models/Jf6ObgbGyN/";
+
+    let model, webcam, maxPredictions;
+    let isRunning = false; 
+
+    async function init() {
+        if (isRunning) return;
+        
+        const startBtn = document.getElementById("start-btn");
+        const statusMsg = document.getElementById("status-message");
+        
+        startBtn.disabled = true;
+        statusMsg.innerText = "Cargando modelo...";
+
+        try {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            const flip = true; 
+            webcam = new tmImage.Webcam(320, 240, flip); 
+            
+            statusMsg.innerText = "Configurando cámara...";
+            await webcam.setup(); 
+            await webcam.play();
+            
+            isRunning = true;
+            window.requestAnimationFrame(loop);
+
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            statusMsg.innerText = "Analizando postura...";
+        } catch (error) {
+            console.error(error);
+            statusMsg.innerText = "Error: Cámara ocupada o permiso denegado.";
+            statusMsg.style.color = "#f75151";
+            startBtn.disabled = false;
+            isRunning = false;
+        }
+    }
+
+    async function loop() {
+        if (!isRunning) return;
+        webcam.update(); 
+        await predict();
+        window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+        const prediction = await model.predict(webcam.canvas);
+        let highestClass = "";
+        let highestProbability = 0;
+
+        for (let i = 0; i < maxPredictions; i++) {
+            if (prediction[i].probability > highestProbability) {
+                highestProbability = prediction[i].probability;
+                highestClass = prediction[i].className;
+            }
+        }
+
+        const card = document.getElementById("main-card");
+        const message = document.getElementById("status-message");
+
+        // Calibración automática si la certeza baja del 75%
+        if (highestProbability < 0.75) {
+            card.className = "container";
+            message.innerText = "Calibrando...";
+            message.style.color = "#7c7c8a";
+            return;
+        }
+
+        // Validación estricta con tus etiquetas exactas de Teachable Machine
+        if (highestClass === "Good Posture") {
+            card.className = "container status-good";
+            message.innerText = "Excelente postura";
+            message.style.color = "#04d361";
+        } else if (highestClass === "Slouching Posture") {
+            card.className = "container status-bad";
+            message.innerText = "¡Endorézate! Estás encorvado";
+            message.style.color = "#f75151";
+        } else {
+            card.className = "container";
+            message.innerText = "Detectando...";
+            message.style.color = "#e1e1e6";
+        }
+    }
+</script>
+</body>
+</html>
