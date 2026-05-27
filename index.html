@@ -231,7 +231,14 @@
             const card = document.getElementById("main-card");
             const message = document.getElementById("status-message");
 
+            // --- SOLUCIÓN AL PROBLEMA ---
+            // Dibujamos el video de la cámara en el lienzo
             ctx.drawImage(webcam.canvas, 0, 0);
+
+            // --- LAS LÍNEAS DE DIBUJO HAN SIDO ELIMINADAS COMPLETAMENTE ---
+            // No hay llamadas a tmPose.drawKeypoints ni tmPose.drawSkeleton en este código.
+            // Esto garantiza que no se muestren puntos de ningún color (cian, magenta, etc.).
+            // ---------------------------------
 
             if (!pose) {
                 card.className = "container";
